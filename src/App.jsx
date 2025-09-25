@@ -1,140 +1,107 @@
 import React, { useState } from 'react';
-import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
-import ChatbotHomepage from './components/ChatbotHomepage';
-import ConstraintTable from './components/ConstraintTable';
-import OptimizationResults from './components/OptimizationResults';
-import OptimizationVisualizer from './components/OptimizationVisualizer';
-import Navigation from './components/Navigation';
-import { solveLinearProgram } from './utils/linearProgrammingSolver';
+import ChatHomePage from './components/ChatHomePage';
+import OptimizationInterface from './components/OptimizationInterface';
+import { solveLinearProgram } from './utils/solver';
 
 function App() {
-  const navigate = useNavigate();
-  const location = useLocation();
-  
-  const [objective, setObjective] = useState(null);
-  const [constraints, setConstraints] = useState([]);
-  const [solution, setSolution] = useState(null);
+  const [currentView, setCurrentView] = useState('chat-home');
+  const [optimizationData, setOptimizationData] = useState({
+    objective: { coeffX: 2, coeffY: 3, type: 'maximize' },
+    constraints: [
+      { id: '1', coeffX: 1, coeffY: 1, operator: '<=', value: 10 },
+      { id: '2', coeffX: 2, coeffY: 1, operator: '<=', value: 16 },
+      { id: '3', coeffX: 1, coeffY: 2, operator: '<=', value: 12 },
+    ],
+    result: null,
+  });
+  const [chatMessages, setChatMessages] = useState([]);
 
-  const handleStartOptimization = () => {
-    navigate('/constraints');
+  const handleChatSubmit = (message) => {
+    const newMessages = [
+      ...chatMessages,
+      {
+        id: Date.now(),
+        type: 'user',
+        content: message,
+        timestamp: new Date(),
+      },
+    ];
+    setChatMessages(newMessages);
+
+    // Trigger optimization and switch to split view
+    const result = solveLinearProgram(
+      optimizationData.objective,
+      optimizationData.constraints
+    );
+    setOptimizationData((prev) => ({ ...prev, result }));
+    setCurrentView('optimization');
+
+    // Add bot response
+    setTimeout(() => {
+      const botResponse = generateBotResponse(message.toLowerCase());
+      setChatMessages((prev) => [...prev, botResponse]);
+    }, 1000);
   };
 
-  const handleSolve = (objectiveFunction, problemConstraints) => {
-    const result = solveLinearProgram(objectiveFunction, problemConstraints);
-    setObjective(objectiveFunction);
-    setConstraints(problemConstraints);
-    setSolution(result);
-    navigate('/results');
+  const generateBotResponse = (input) => {
+    let response = '';
+
+    if (input.includes('linear programming') || input.includes('linear program')) {
+      response =
+        "I've set up a linear programming problem for you! On the left, you can see the objective function and constraints. The graph shows the feasible region and optimal solution. Linear Programming is used to find the best outcome when requirements are represented by linear relationships.";
+    } else if (
+      input.includes('maximize') ||
+      input.includes('minimize') ||
+      input.includes('optimize')
+    ) {
+      response =
+        "Great! I've solved the optimization problem for you. The left panel shows the detailed solution including the optimal point, objective value, and constraint analysis. You can modify the coefficients and constraints to explore different scenarios.";
+    } else if (input.includes('solve') || input.includes('help')) {
+      response =
+        "I've solved the current linear programming problem! The optimal solution is displayed on the left with a complete analysis. You can see the feasible region, constraint boundaries, and the optimal point marked in red on the graph.";
+    } else {
+      response =
+        "I've set up an optimization problem based on your query! The left panel shows the problem setup, solution, and visualization. You can modify the objective function and constraints to explore different optimization scenarios.";
+    }
+
+    return {
+      id: Date.now() + 1,
+      type: 'bot',
+      content: response,
+      timestamp: new Date(),
+    };
   };
 
-  const handleVisualize = () => {
-    navigate('/visualization');
-  };
-
-  const handleBackToResults = () => {
-    navigate('/results');
-  };
-
-  const handleBackToConstraints = () => {
-    navigate('/constraints');
+  const handleSolveOptimization = (objective, constraints) => {
+    const result = solveLinearProgram(objective, constraints);
+    setOptimizationData({
+      objective,
+      constraints,
+      result,
+    });
   };
 
   const handleBackToHome = () => {
-    navigate('/');
+    setCurrentView('chat-home');
+    setChatMessages([]);
+    setOptimizationData((prev) => ({ ...prev, result: null }));
   };
 
   return (
-    <div className="min-h-screen">
-      {location.pathname !== '/' && (
-        <Navigation 
-          currentPath={location.pathname}
-          onNavigateHome={handleBackToHome}
-          onNavigateConstraints={handleBackToConstraints}
-          onNavigateResults={handleBackToResults}
-          onNavigateVisualization={handleVisualize}
-          hasResults={!!solution}
+    <div className="min-h-screen bg-gray-50">
+      {currentView === 'chat-home' && (
+        <ChatHomePage onChatSubmit={handleChatSubmit} />
+      )}
+
+      {currentView === 'optimization' && (
+        <OptimizationInterface
+          optimizationData={optimizationData}
+          onSolveOptimization={handleSolveOptimization}
+          chatMessages={chatMessages}
+          onChatSubmit={handleChatSubmit}
+          onBackToHome={handleBackToHome}
         />
       )}
-      
-      <Routes>
-        <Route 
-          path="/" 
-          element={<ChatbotHomepage onStartOptimization={handleStartOptimization} />} 
-        />
-        <Route 
-          path="/constraints" 
-          element={<ConstraintTable onSolve={handleSolve} />} 
-        />
-        <Route 
-          path="/results" 
-          element={
-            objective && solution ? (
-              <OptimizationResults
-                objective={objective}
-                constraints={constraints}
-                result={solution}
-                onVisualize={handleVisualize}
-              />
-            ) : (
-              <div className="min-h-screen bg-gradient-to-br from-red-50 to-pink-50 flex items-center justify-center">
-                <div className="text-center">
-                  <h1 className="text-2xl font-bold text-red-600 mb-4">No Results Available</h1>
-                  <p className="text-gray-600 mb-6">Please solve an optimization problem first.</p>
-                  <button
-                    onClick={() => navigate('/constraints')}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors duration-200"
-                  >
-                    Go to Constraints
-                  </button>
-                </div>
-              </div>
-            )
-          } 
-        />
-        <Route 
-          path="/visualization" 
-          element={
-            objective && solution ? (
-              <OptimizationVisualizer
-                objective={objective}
-                constraints={constraints}
-                result={solution}
-                onBack={handleBackToResults}
-              />
-            ) : (
-              <div className="min-h-screen bg-gradient-to-br from-red-50 to-pink-50 flex items-center justify-center">
-                <div className="text-center">
-                  <h1 className="text-2xl font-bold text-red-600 mb-4">No Data to Visualize</h1>
-                  <p className="text-gray-600 mb-6">Please solve an optimization problem first.</p>
-                  <button
-                    onClick={() => navigate('/constraints')}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors duration-200"
-                  >
-                    Go to Constraints
-                  </button>
-                </div>
-              </div>
-            )
-          } 
-        />
-        <Route 
-          path="*" 
-          element={
-            <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 flex items-center justify-center">
-              <div className="text-center">
-                <h1 className="text-4xl font-bold text-gray-800 mb-4">404</h1>
-                <p className="text-gray-600 mb-6">Page not found</p>
-                <button
-                  onClick={() => navigate('/')}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors duration-200"
-                >
-                  Go Home
-                </button>
-              </div>
-            </div>
-          } 
-        />
-      </Routes>
     </div>
   );
 }
